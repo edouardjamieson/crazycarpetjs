@@ -1,6 +1,6 @@
 {
   "name": "crazycarpetJS",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "JavaScript library to create non-blocking content sliders",
   "main": "crazycarpet.js",
   "devDependencies": {
