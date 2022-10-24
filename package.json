@@ -1,0 +1,20 @@
+{
+  "name": "crazycarpetJS",
+  "version": "0.0.1",
+  "description": "JavaScript library to create non-blocking content sliders",
+  "main": "crazycarpet.js",
+  "devDependencies": {
+    "@babel/cli": "^7.18.10",
+    "@babel/core": "^7.19.0",
+    "@babel/plugin-proposal-class-properties": "^7.18.6",
+    "@babel/preset-env": "^7.19.0",
+    "jsdoc": "^3.6.11",
+    "mkdirp": "^1.0.4",
+    "uglify-js": "^3.17.0"
+  },
+  "scripts": {
+    "build": "./node_modules/.bin/jsdoc ./src/js/crazycarpet.js && mkdirp ./dist/js && babel src/js/crazycarpet.js -o dist/js/crazycarpet.js && uglifyjs dist/js/crazycarpet.js -o dist/js/crazycarpet.min.js"
+  },
+  "author": "fatfish",
+  "license": "ISC"
+}
