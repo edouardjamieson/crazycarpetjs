@@ -1,4 +1,6 @@
 export default class CrazyCarpet {
+	static instances = [];
+
 	/***
 	 *
 	 *      ####   ####  #    #  ####  ##### #####  #    #  ####  #####  ####  #####
@@ -37,18 +39,34 @@ export default class CrazyCarpet {
 		this.options.clamp.enabled = options.clamp?.enabled || false;
 		this.options.clamp.resistance = options.clamp?.resistance || 300;
 
+		// Snap
+		this.options.snap = options.snap || false;
+
 		// Loop
 		this.options.loop = options.loop || false;
 
 		// Autoplay
 
 		// Hooks
+		this.hooks = {};
+		this.hooks.onInit = options.hooks?.onInit || false;
+		this.hooks.onStart = options.hooks?.onStart || false;
+		this.hooks.onDrag = options.hooks?.onDrag || false;
+		this.hooks.onStop = options.hooks?.onStop || false;
+		this.hooks.onClickable = options.hooks?.onClickable || false;
+		this.hooks.onDestroy = options.hooks?.onDestroy || false;
+
+		// Buttons
+		this.buttons = {};
+		this.buttons.prev = options.buttons?.prev || false;
+		this.buttons.next = options.buttons?.next || false;
 
 		// ====================================================================
 		// Internal data
 		// ====================================================================
 		this.isDragging = false;
 		this.isEasing = false;
+		this.isMoving = false;
 
 		this.t = 0;
 		this.old_t = 0;
@@ -58,8 +76,9 @@ export default class CrazyCarpet {
 		this.start = 0;
 		this.easing = this.options.drag.ease;
 		this.overlap_x = null;
-
 		this.clickable = null;
+
+		this.resize_timeout = null;
 
 		// ====================================================================
 		// Call to init function
@@ -100,11 +119,51 @@ export default class CrazyCarpet {
 			this.move_end(null, false);
 		});
 
+		// Buttons
+		if (this.buttons.prev) {
+			if (typeof this.buttons.prev == 'string') document.querySelector(this.buttons.prev).addEventListener('click', this.move_prev.bind(this));
+			else this.buttons.prev.addEventListener('click', this.move_prev.bind(this));
+		}
+		if (this.buttons.next) {
+			if (typeof this.buttons.next == 'string') document.querySelector(this.buttons.next).addEventListener('click', this.move_next.bind(this));
+			else this.buttons.next.addEventListener('click', this.move_next.bind(this));
+		}
+
+		// Utils
+
+		// ====================================================================
+		// Check loop
+		// ====================================================================
+		if (this.options.loop) {
+			this.checkLoop();
+			if (this.options.snap) {
+				// Set temporary ease
+				const tmp_ease = this.options.ease;
+				this.options.ease = 1;
+				this.move_end(null, false);
+				setTimeout(() => {
+					this.options.ease = tmp_ease;
+				});
+			}
+		} else this.element.classList.add('__start');
+
+		// ====================================================================
+		// Check fot buttons & links
+		// ====================================================================
+		this.element.querySelectorAll('a').forEach((el) => el.classList.add('cc__clickable'));
+		this.element.querySelectorAll('button').forEach((el) => el.classList.add('cc__clickable'));
+
 		// ====================================================================
 		// Initial calls
 		// ====================================================================
 		this.dispose(0);
 		this.render();
+		CrazyCarpet.instances.push(this);
+
+		// ====================================================================
+		// Hook
+		// ====================================================================
+		this.hooks.onInit && typeof this.hooks.onInit == 'function' ? this.hooks.onInit() : null;
 	}
 
 	/***
@@ -159,6 +218,7 @@ export default class CrazyCarpet {
 		// ====================================================================
 		// Call "onStart" hook
 		// ====================================================================
+		this.hooks.onStart && typeof this.hooks.onStart == 'function' ? this.hooks.onStart() : null;
 	}
 
 	/***
@@ -180,8 +240,6 @@ export default class CrazyCarpet {
 		this.x = e.clientX || e.touches[0].clientX;
 		if (this.x < 0 || this.x > window.innerWidth) return;
 
-		console.log(e.clientX);
-
 		// ====================================================================
 		// Calculates position
 		// ====================================================================
@@ -189,7 +247,7 @@ export default class CrazyCarpet {
 		this.start = this.x;
 		if (this.moves.length >= 30) this.moves.shift();
 		this.moves.push({ speed: this.x, time: e.timeStamp });
-		// this.isDragging = true;
+		this.isMoving = true;
 
 		// ====================================================================
 		// CSS class for element position
@@ -207,11 +265,12 @@ export default class CrazyCarpet {
 		// ====================================================================
 		// Check for overlap
 		// ====================================================================
-		if (this.options.clamp && !this.options.loop && this.isDragging) this.checkOverlap(e);
+		if (this.options.clamp.enabled && !this.options.loop && this.isDragging) this.checkOverlap(e);
 
 		// ====================================================================
 		// Call "onDrag" hook
 		// ====================================================================
+		this.hooks.onDrag && typeof this.hooks.onDrag == 'function' ? this.hooks.onDrag() : null;
 	}
 
 	/***
@@ -249,6 +308,12 @@ export default class CrazyCarpet {
 				time = 0;
 			}
 
+			// Check for action
+			if (!this.isMoving && this.clickable) {
+				this.clickable.returnValue = true;
+				this.clickable.target.click();
+			}
+
 			// Calculate easing function
 			const delta = Math.max(e.timeStamp - time, 1);
 			const x = this.x;
@@ -259,6 +324,13 @@ export default class CrazyCarpet {
 			drag = x ? Math.sqrt(Math.pow(drag - x, 2)) : Math.sqrt(Math.pow(drag - this.moves[this.moves.length - 1].speed, 2));
 			drag = (drag * 30) / delta;
 			this.move += drag * direction * this.options.ease_power;
+		}
+
+		// ====================================================================
+		// Check for snapping
+		// ====================================================================
+		if (this.options.snap && this.element.getBoundingClientRect().width != 0) {
+			this.move = gsap.utils.snap(this.element.querySelector('.cc__item').getBoundingClientRect().width, this.move);
 		}
 
 		// ====================================================================
@@ -274,6 +346,7 @@ export default class CrazyCarpet {
 		// Reset move variables
 		// ====================================================================
 		this.isDragging = false;
+		this.isMoving = false;
 		this.overlap_x = null;
 
 		this.element.classList.remove('__moving');
@@ -282,6 +355,69 @@ export default class CrazyCarpet {
 			el.style.userSelect = 'auto';
 			el.classList.remove('cc__handle');
 		});
+
+		// ====================================================================
+		// Hook
+		// ====================================================================
+		this.hooks.onStop && typeof this.hooks.onStop == 'function' ? this.hooks.onStop() : null;
+	}
+
+	/***
+	 *
+	 *     #####  #    # ##### #####  ####  #    #  ####
+	 *     #    # #    #   #     #   #    # ##   # #
+	 *     #####  #    #   #     #   #    # # #  #  ####
+	 *     #    # #    #   #     #   #    # #  # #      #
+	 *     #    # #    #   #     #   #    # #   ## #    #
+	 *     #####   ####    #     #    ####  #    #  ####
+	 *
+	 */
+
+	move_prev() {
+		this.move += this.element.querySelector('.cc__item').clientWidth;
+
+		// ====================================================================
+		// CSS class for element position
+		// ====================================================================
+		if (!this.options.loop) {
+			// Check if at start
+			if (this.move >= 0) this.element.classList.add('__start');
+			else this.element.classList.remove('__start');
+
+			// Check if at end
+			if (this.move + this.getAllItemsWidth() <= this.element.getBoundingClientRect().width) this.element.classList.add('__end');
+			else this.element.classList.remove('__end');
+		}
+
+		this.move_end(null, false);
+
+		// ====================================================================
+		// Hook
+		// ====================================================================
+		this.hooks.onClickable && typeof this.hooks.onClickable == 'function' ? this.hooks.onClickable() : null;
+	}
+	move_next() {
+		this.move -= this.element.querySelector('.cc__item').clientWidth;
+
+		// ====================================================================
+		// CSS class for element position
+		// ====================================================================
+		if (!this.options.loop) {
+			// Check if at start
+			if (this.move >= 0) this.element.classList.add('__start');
+			else this.element.classList.remove('__start');
+
+			// Check if at end
+			if (this.move + this.getAllItemsWidth() <= this.element.getBoundingClientRect().width) this.element.classList.add('__end');
+			else this.element.classList.remove('__end');
+		}
+
+		this.move_end(null, false);
+
+		// ====================================================================
+		// Hook
+		// ====================================================================
+		this.hooks.onClickable && typeof this.hooks.onClickable == 'function' ? this.hooks.onClickable() : null;
 	}
 
 	/***
@@ -441,5 +577,56 @@ export default class CrazyCarpet {
 	// ====================================================================
 	lerp(vel1, vel2, time) {
 		return vel1 * (1 - time) + vel2 * time;
+	}
+
+	// ====================================================================
+	// Check loop
+	// ====================================================================
+	checkLoop() {
+		console.log('xd');
+		// Checks if all CC items fill CC element
+		if (this.getAllItemsWidth() - this.element.querySelector('.cc__item').getBoundingClientRect().width < this.element.getBoundingClientRect().width) {
+			let html = this.element.querySelector('.cc__wrapper').innerHTML;
+			while (this.getAllItemsWidth() - this.element.querySelector('.cc__item').getBoundingClientRect().width < this.element.getBoundingClientRect().width) {
+				this.element.querySelector('.cc__wrapper').innerHTML = this.element.querySelector('.cc__wrapper').innerHTML + html;
+			}
+		}
+		//=========================================================
+		// Adds style
+		//=========================================================
+		this.element.querySelectorAll('.cc__item').forEach((item) => {
+			item.style.position = 'absolute';
+			item.style.top = 0;
+			item.style.left = 0;
+		});
+		this.element.querySelector('.cc__wrapper').style.minHeight = this.element.querySelector('.cc__item').clientHeight + 'px';
+	}
+
+	// ====================================================================
+	// Destroy
+	// ====================================================================
+	destroy() {
+		this.element.removeEventListener('mousedown', this.move_start.bind(this));
+		this.element.removeEventListener('mousemove', this.move_drag.bind(this));
+		this.element.removeEventListener('mouseup', this.move_end.bind(this));
+		this.element.removeEventListener('touchstart', this.move_start.bind(this));
+		this.element.removeEventListener('touchmove', this.move_drag.bind(this));
+		this.element.removeEventListener('touchend', this.move_end.bind(this));
+
+		if (this.buttons.prev) {
+			if (typeof this.buttons.prev == 'string') document.querySelector(this.buttons.prev).removeEventListener('click', this.move_prev.bind(this));
+			else this.buttons.prev.removeEventListener('click', this.move_prev.bind(this));
+		}
+		if (this.buttons.next) {
+			if (typeof this.buttons.next == 'string') document.querySelector(this.buttons.next).removeEventListener('click', this.move_next.bind(this));
+			else this.buttons.next.removeEventListener('click', this.move_next.bind(this));
+		}
+
+		CrazyCarpet.instances.splice(CrazyCarpet.instances.indexOf(this), 1);
+
+		// ====================================================================
+		// Hook
+		// ====================================================================
+		this.hooks.onDestroy && typeof this.hooks.onDestroy == 'function' ? this.hooks.onDestroy() : null;
 	}
 }
